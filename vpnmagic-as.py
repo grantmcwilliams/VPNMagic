@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 #Bugs
-#?
+#--create group doesn't work
 
 import struct, socket
 import getopt, sys, os
@@ -71,6 +71,8 @@ def incrementasset(platform):
             assettag = 30000  #Physical Engine (G2 Lightouse)
         elif platform in 'VE':
             assettag = 40000  #Virtual Engines (G2 Virtual device on Xenserver, ESXi, Hyper-V)
+        elif platform in 'ADM':
+            assettag = 9000    #Admin accounts
     return str(assettag).zfill(6) 
 
 def incrementclientip():
@@ -229,7 +231,7 @@ def listclient(option, showitem):
             for key2,val2 in val1.items():
                 usertype = val1.get(key2, val2)
                 if usertype == 'user_connect' or usertype == 'user_compile':
-                    patt = re.compile(r'CFS-%s-[0-9]{5,6}' % showitem)
+                    patt = re.compile(r'CFS-%s-[0-9]{4,6}' % showitem)
                     match = patt.search(username)
                     if option == 'all':
                         if showitem:
@@ -356,7 +358,7 @@ def listasset(platform):
     users = listclient('name', platform)
     
     matchlist = []
-    patt = re.compile(r'CFS-%s-[0-9]{5,6}' % platform)
+    patt = re.compile(r'CFS-%s-[0-9]{4,6}' % platform)
     for user in users:
         match = patt.search(user)
         if match:
@@ -365,7 +367,7 @@ def listasset(platform):
     return sorted(matchlist)
     
 def moveclient(client, group):
-    patt = re.compile(r'CFS-(LH|VLH|SC|CE|PE|VE|BE)-[0-9]{5,6}') 
+    patt = re.compile(r'CFS-(LH|VLH|SC|CE|PE|VE|BE)-[0-9]{4,6}') 
     if valid_patt(patt,client):
         name = client
     
@@ -434,11 +436,14 @@ def migrateclient(name, group):
     
 
 def createclient(name, group):
-    patt = re.compile(r'CFS-(LH|VLH|SC|CE|PE|VE|BE)-[0-9]{5,6}') 
+    patt = re.compile(r'CFS-(LH|VLH|SC|CE|PE|VE|BE|ADM)-[0-9]{4,6}') 
     if valid_patt(patt,name):
         name = name
+    else:
+        print "Please enter a valid Asset Name"
+        sys.exit(2)
     
-    patt = re.compile(r'(LH|VLH|SC|CE|PE|VE|BE)') 
+    patt = re.compile(r'^(LH|VLH|SC|CE|PE|VE|BE|ADM)$') 
     if valid_patt(patt,name):
         name = "CFS-%s-%s" % (name,incrementasset(name))
 
@@ -471,38 +476,38 @@ def createclient(name, group):
     
     return name
     
-def creategroup(network,subnet):
+def creategroup(name,network):
 
     grouplist = listgroup('verbose')
-    if searchlist(network, grouplist):
-        print "Group %s already exists" % network
+    if searchlist(name, grouplist):
+        print "Group %s already exists" % name
         sys.exit(2)
 
-    if checknetmask(subnet):
-        print "Please enter valid netmask"
+    if checknetmask(network):
+        print "Please enter valid network"
         sys.exit(2)
 
-    cmd = '/usr/local/openvpn_as/scripts/sacli --user %s --key group_declare --value true UserPropPut' % network
+    cmd = '/usr/local/openvpn_as/scripts/sacli --user %s --key group_declare --value true UserPropPut' % name
     p = subprocess.Popen(cmd, shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
     output, err = p.communicate()
     
-    cmd = '/usr/local/openvpn_as/scripts/sacli --user %s --key c2s_dest_s --value false UserPropPut' % network
+    cmd = '/usr/local/openvpn_as/scripts/sacli --user %s --key c2s_dest_s --value false UserPropPut' % name
     p = subprocess.Popen(cmd, shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
     output, err = p.communicate()
     
-    cmd = '/usr/local/openvpn_as/scripts/sacli --user %s --key c2s_dest_v --value false UserPropPut' % network
+    cmd = '/usr/local/openvpn_as/scripts/sacli --user %s --key c2s_dest_v --value false UserPropPut' % name
     p = subprocess.Popen(cmd, shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
     output, err = p.communicate()
     
-    cmd = '/usr/local/openvpn_as/scripts/sacli --user %s --key prop_autologin --value true UserPropPut' % network    
+    cmd = '/usr/local/openvpn_as/scripts/sacli --user %s --key prop_autologin --value true UserPropPut' % name    
     p = subprocess.Popen(cmd, shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
     output, err = p.communicate()
     
-    cmd = '/usr/local/openvpn_as/scripts/sacli --user %s --key prop_deny --value false UserPropPut' % network    
+    cmd = '/usr/local/openvpn_as/scripts/sacli --user %s --key prop_deny --value false UserPropPut' % name    
     p = subprocess.Popen(cmd, shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
     output, err = p.communicate()
     
-    cmd = '/usr/local/openvpn_as/scripts/sacli --user %s --key prop_superuser --value false UserPropPut' % network    
+    cmd = '/usr/local/openvpn_as/scripts/sacli --user %s --key prop_superuser --value false UserPropPut' % name    
     p = subprocess.Popen(cmd, shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
     output, err = p.communicate()
  
@@ -513,7 +518,7 @@ def creategroup(network,subnet):
         natip = int2ip(sip)
         srvip = str(servernet) + str(hostip)
         
-        cmd = '/usr/local/openvpn_as/scripts/sacli --user %s --key access_to.%s --value "+SUBNET:%s(%s)" UserPropPut' % (network,count,srvip,natip)
+        cmd = '/usr/local/openvpn_as/scripts/sacli --user %s --key access_to.%s --value "+SUBNET:%s(%s)" UserPropPut' % (name,count,srvip,natip)
         p = subprocess.Popen(cmd, shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
         output, err = p.communicate()
         
@@ -523,7 +528,7 @@ def creategroup(network,subnet):
         
         count += 1
 
-    cmd = '/usr/local/openvpn_as/scripts/sacli --user %s --key group_subnets.0 --value %s/%s UserPropPut' % (network,network,subnet)
+    cmd = '/usr/local/openvpn_as/scripts/sacli --user %s --key group_subnets.0 --value %s/%s UserPropPut' % (name,network,subnet)
     p = subprocess.Popen(cmd, shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
     output, err = p.communicate()
     
@@ -556,28 +561,28 @@ def usage():
     progname =  os.path.basename(sys.argv[0])
     print ""
     print "%s arguments:" % progname
-    print "-h, --help                                   Show this help message and exit"
-    print "-l, --list clients                           List clients"
-    print "-l, --list clients -p <platform>             List clients for <platform>"
-    print "-l, --list groups                            List groups"
-    print "-l, --list all                               List all client data in CSV format"
-    print "-l, --list all -p <platform>                 List all client data in CSV format for <platform>"
-    print "-l, --list ips                               List client IP addresses"
-    print "-l, --list ips -p <platform>                 List client IP addresses for <platform>"
-    print "-l, --list networks                          List network addresses"
-    print "-l, --list networks -p <platform>            List network addresses for <platform>"
-    print "-o, --output <client> -a <attribute>         Output client attribute - config, ip, group"
-    print "-m, --migrate <client> -g <group>            Migreate client to OpenVPN AS"
-    print "-c  --create client -n <name> -g <group>     Create new client"
-    print "-c  --create client -p <platform> -g <group> Create new client with auto created name"
-    print "-c  --create group -n <name> -s <subnet>     Create new group"
-    print "-d, --delete <client|group> -n <name>        Delete client or group (--name required)"
+    print "-h, --help                                       Show this help message and exit"
+    print "-l, --list clients                               List clients"
+    print "-l, --list clients -p <platform>                 List clients for <platform>"
+    print "-l, --list groups                                List groups"
+    print "-l, --list all                                   List all client data in CSV format"
+    print "-l, --list all -p <platform>                     List all client data in CSV format for <platform>"
+    print "-l, --list ips                                   List client IP addresses"
+    print "-l, --list ips -p <platform>                     List client IP addresses for <platform>"
+    print "-l, --list networks                              List network addresses"
+    print "-l, --list networks -p <platform>                List network addresses for <platform>"
+    print "-o, --output <client> -a <attribute>             Output client attribute - config, ip, group"
+    print "-m, --migrate <client> -g <group>                Migrate client to OpenVPN AS"
+    print "-c  --create client -n <name> -g <group>         Create new client"
+    print "-c  --create client -p <platform> -g <group>     Create new client with auto created name"
+    print "-c  --create group -n <name> -s <network/bits>   Create new group"
+    print "-d, --delete <client|group> -n <name>            Delete client or group"
     print ""
     print "Filters:"
-    print "-s  --subnet <network/bits>                  Network address for client (eg. 24)"
-    print "-n, --name <client|group>                    Name of client or group"
-    print "-g, --group <group name>                     Name of group"
-    print "-p, --platform <platform name>               Name of the client platform (eg. CE, PE, SC)"
+    print "-s  --subnet <network/bits>                      Network address for client (eg. 24)"
+    print "-n, --name <client|group>                        Name of client or group"
+    print "-g, --group <group name>                         Name of group"
+    print "-p, --platform <platform name>                   Name of the client platform (eg. CE, PE, SC)"
     print ""
     print "Examples:"
     print "Create a new client:"
@@ -627,10 +632,10 @@ def main():
             option = arg
             operation = 'list'
         elif opt in ("-c","--create"):
-            client = arg
+            itemtype = arg
             operation = 'create'
         elif opt in ("-s","--subnet"):
-            subnet = arg
+            network = arg
         elif opt in ("-n","--name"):
             name = arg
         elif opt in ("-p","--platform"):
@@ -684,11 +689,29 @@ def main():
             print "Unknown Option - %s" % option
             sys.exit(2)
     elif operation in 'create':
-        if group:
-            createclient(client, group)
+        if itemtype in 'client':
+            if not name or platform:
+                print "Please provide asset tag or platform identifier"
+                sys.exit(2)
+            if not group:
+                print "Please provide group name"
+                sys.exit(2)
+            else:
+                createclient(name, group)
+            if platform:
+                createclient(name, platform)
+        elif itemtype in 'group':
+            if not name:
+                print "Please provide group name"
+                sys.exit(2)
+            if not network:
+                print "Please provide group network"
+                sys.exit(2)
+            #creategroup(name,network)
+            print "Group creation not functional"
         else:
-            print "Please provide group"
-            sys.exit(2)
+            print "Please provide item to create (client,group)"
+            sys.exit(2)    
     elif operation in 'delete':
         deleteclient(option)
     elif operation in 'migrate':
