@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 
+#Bugs
+#?
+
 import struct, socket
 import getopt, sys, os
 import subprocess
@@ -46,33 +49,34 @@ def checknetmask(netmask):
     else:
         return False
 
-def incrementasset(role):
-    assets = listasset(role)
-    
+def incrementasset(platform):
+    assets = listasset(platform)
     if assets:
         assetlist = []
         for i in assets:
-            assetlist.append(i.split('-')[2])
+            assetlist.append(i.split('-')[2].zfill(6))
         assettag = int(max(assetlist)) + 1
     else:
-        if role in 'SC':
-            assettag = 100  #SC (Server Class) devices already exist in the 001 -006 space
-        elif role in 'LH':
-            assettag = '2500'  #LH (Lighthouse G1) devices already exist in the 002000 - 002300 space
-        elif role in 'VLH':
-            assettag = '5000'  #Virtualized Lighthouse ie. G2 physcial devices
-        elif role in 'CSE':
-            assettag = 10000  #Cloud Scan Engine
-        elif role in 'PSE':
-            assettag = 30000  #Physical Scan Engine ie. repurposed LH devices
-        elif role in 'VSE':
-            assettag = 40000  #Virtual Scan Engines
+        if platform in 'SC':
+            assettag = 100  #SC (Server Class G1) devices already exist in the 001 -006 space
+        elif platform in 'LH':
+            assettag = 2500  #LH (Lighthouse G1) devices already exist in the 002000 - 002300 space
+        elif platform in 'VLH':
+            assettag = 2500  #LH (Virtualized G2 Lighthouse hypervisor) 
+        elif platform in 'BE':
+            assettag = 10000  #G2 Base Engine (G2 Lighthouse unconfigured)
+        elif platform in 'CE':
+            assettag = 10000  #Cloud Engine (G1 Cloud device)
+        elif platform in 'PE':
+            assettag = 30000  #Physical Engine (G2 Lightouse)
+        elif platform in 'VE':
+            assettag = 40000  #Virtual Engines (G2 Virtual device on Xenserver, ESXi, Hyper-V)
     return str(assettag).zfill(6) 
 
 def incrementclientip():
     netparts = []
     iplist = []
-    startip = 50
+    startip = 2
     
     #p = subprocess.Popen(['/usr/local/openvpn_as/scripts/confdba', '-s'], stdout=subprocess.PIPE,stderr=subprocess.PIPE)
     #tmpdba, err = p.communicate()
@@ -135,13 +139,13 @@ def incrementipgroup(group):
     p = subprocess.Popen(['/usr/local/openvpn_as/scripts/confdba', '-us'], stdout=subprocess.PIPE,stderr=subprocess.PIPE)
     confdba, err = p.communicate()
     userdba = ast.literal_eval(confdba)
-    
+	
     #p = subprocess.Popen(['cat', '/root/bin/confdbaus.txt'], stdout=subprocess.PIPE,stderr=subprocess.PIPE)
     #tmpdba, err = p.communicate()
     #userdba = ast.literal_eval(tmpdba)
     netparts = []
     iplist = []
-    startip = 50
+    startip = 2
     
     # Assumes all subnets are assigned by group. Could foul it up if assigned to user.
     for key1,val1 in userdba.items():
@@ -179,11 +183,14 @@ def incrementipgroup(group):
     
     for seqdec in range(minipdec, maxipdec):
         seqip = int2ip(seqdec)
+        
+        
         if checkip(seqip, iplist):
             pass
         else:
             newclientip = seqip
             break
+    
     return newclientip
  
 def listgroup(verbose):
@@ -210,7 +217,7 @@ def listgroup(verbose):
     return alllist
  
         
-def listclient(option, client):
+def listclient(option, showitem):
     p = subprocess.Popen(['/usr/local/openvpn_as/scripts/confdba', '-us'], stdout=subprocess.PIPE,stderr=subprocess.PIPE)
     confdba, err = p.communicate()
     userdba = ast.literal_eval(confdba)
@@ -222,34 +229,76 @@ def listclient(option, client):
             for key2,val2 in val1.items():
                 usertype = val1.get(key2, val2)
                 if usertype == 'user_connect' or usertype == 'user_compile':
-                    patt = re.compile(r'CFS-%s-[0-9]{6}' % option)
+                    patt = re.compile(r'CFS-%s-[0-9]{5,6}' % showitem)
                     match = patt.search(username)
                     if option == 'all':
-                        usergroup = val1.get('conn_group', None)
-                        if(str(usergroup) == "None"):
-                            usergroup = "--"
-                        userip = val1.get('conn_ip', None)
-                        if(str(userip) == "None"):
-                            userip = "--"
-                        usernet = val1.get('group_subnets.0', None)
-                        if(str(usernet) == "None"):
-                            usernet = "--"
-                            for key3,val3 in userdba.items():
-                                if key3 == usergroup:
-                                    usernet = val3.get('group_subnets.0', None)
-                                    if(str(usernet) == "None"):
-                                        usernet = "--"
-                        superuser = val1.get('prop_superuser', None)
-                        if not (str(superuser) == "true"):
-                            line = username + "," + usergroup + "," + usernet + "," + userip
-                            clientlist.append(line)
+                        if showitem:
+                            patt2 = re.compile(r'.*%s.*' % showitem)
+                            match = patt2.search(username)
+                            if match:
+                                usergroup = val1.get('conn_group', None)
+                                if(str(usergroup) == "None"):
+                                    usergroup = "--"
+                                userip = val1.get('conn_ip', None)
+                                if(str(userip) == "None"):
+                                    userip = "--"
+                                usernet = val1.get('group_subnets.0', None)
+                                if(str(usernet) == "None"):
+                                    usernet = "--"
+                                    for key3,val3 in userdba.items():
+                                        if key3 == usergroup:
+                                            usernet = val3.get('group_subnets.0', None)
+                                            if(str(usernet) == "None"):
+                                                usernet = "--"
+                                superuser = val1.get('prop_superuser', None)
+                                if not (str(superuser) == "true"):
+                                    line = username + "," + usergroup + "," + usernet + "," + userip
+                                    clientlist.append(line)
+                        else:
+                            usergroup = val1.get('conn_group', None)
+                            if(str(usergroup) == "None"):
+                                usergroup = "--"
+                            userip = val1.get('conn_ip', None)
+                            if(str(userip) == "None"):
+                                userip = "--"
+                            usernet = val1.get('group_subnets.0', None)
+                            if(str(usernet) == "None"):
+                                usernet = "--"
+                                for key3,val3 in userdba.items():
+                                    if key3 == usergroup:
+                                        usernet = val3.get('group_subnets.0', None)
+                                        if(str(usernet) == "None"):
+                                            usernet = "--"
+                            superuser = val1.get('prop_superuser', None)
+                            if not (str(superuser) == "true"):
+                                line = username + "," + usergroup + "," + usernet + "," + userip
+                                clientlist.append(line)
                     elif option == 'name':
                         superuser = val1.get('prop_superuser', None)
                         if not (str(superuser) == "true"):
-                            clientlist.append(username)
+                            if showitem:
+                                patt = re.compile(r'.*%s.*' % showitem)
+                                match = patt.search(username)
+                                if match:
+                                    clientlist.append(username)
+                            else:
+                               clientlist.append(username)
+                        
                     elif option == 'ips':
-                        if client: 
-                            if username == client:
+                        superuser = val1.get('prop_superuser', None)
+                        if not (str(superuser) == "true"):
+                            if showitem: 
+                                patt = re.compile(r'.*%s.*' % showitem)
+                                match = patt.search(username)
+                                if match:
+                                    userip = val1.get('conn_ip', None)
+                                    if userip:
+                                        try:
+                                            socket.inet_aton(userip)  #Makes sure the groups are in IPv4 network form for sorted below
+                                            clientlist.append(userip)
+                                        except:
+                                            pass
+                            else:
                                 userip = val1.get('conn_ip', None)
                                 if userip:
                                     try:
@@ -257,19 +306,9 @@ def listclient(option, client):
                                         clientlist.append(userip)
                                     except:
                                         pass
-                            else: 
-                                pass
-                        else:
-                            userip = val1.get('conn_ip', None)
-                            if userip:
-                                try:
-                                    socket.inet_aton(userip)  #Makes sure the groups are in IPv4 network form for sorted below
-                                    clientlist.append(userip)
-                                except:
-                                    pass
                     elif option == 'groups':
-                        if client: 
-                            if username == client:
+                        if showitem: 
+                            if username == showitem:
                                 usergroup = val1.get('conn_group', None)
                                 clientlist.append(usergroup)
                             else: 
@@ -279,18 +318,18 @@ def listclient(option, client):
                             usergroup = val1.get('conn_group', None)
                             clientlist.append(usergroup)
                     elif option == 'networks':
-                        if client:
-                            if username == client:
-                                usergroup = val1.get('conn_group', None)
-                                usernet = val1.get('group_subnets.0', None)
-                                if(str(usernet) == "None"):
-                                    for key3,val3 in userdba.items():
-                                        if key3 == usergroup:
-                                            usernet = val3.get('group_subnets.0', None)
-                                if usernet:
-                                    clientlist.append(usernet)
-                            else:
-                                pass
+                        if showitem: 
+                                patt = re.compile(r'.*%s.*' % showitem)
+                                match = patt.search(username)
+                                if match:
+                                    usergroup = val1.get('conn_group', None)
+                                    usernet = val1.get('group_subnets.0', None)
+                                    if(str(usernet) == "None"):
+                                        for key3,val3 in userdba.items():
+                                            if key3 == usergroup:
+                                                usernet = val3.get('group_subnets.0', None)
+                                    if usernet:
+                                        clientlist.append(usernet)
                         else:
                             usergroup = val1.get('conn_group', None)
                             usernet = val1.get('group_subnets.0', None)
@@ -313,11 +352,11 @@ def listclient(option, client):
     else:
         return sorted(set(clientlist))
 
-def listasset(role):
-    users = listclient('name', None)
+def listasset(platform):
+    users = listclient('name', platform)
     
     matchlist = []
-    patt = re.compile(r'CFS-%s-[0-9]{6}' % role)
+    patt = re.compile(r'CFS-%s-[0-9]{5,6}' % platform)
     for user in users:
         match = patt.search(user)
         if match:
@@ -326,7 +365,7 @@ def listasset(role):
     return sorted(matchlist)
     
 def moveclient(client, group):
-    patt = re.compile(r'CFS-(LH|VLH|SC|CSE|PSE|VSE)-[0-9]{6}') 
+    patt = re.compile(r'CFS-(LH|VLH|SC|CE|PE|VE|BE)-[0-9]{5,6}') 
     if valid_patt(patt,client):
         name = client
     
@@ -394,14 +433,14 @@ def migrateclient(name, group):
     return name
     
 
-def createclient(role, group):
-    patt = re.compile(r'CFS-(LH|VLH|SC|CSE|PSE|VSE)-[0-9]{6}') 
-    if valid_patt(patt,role):
-        name = role
+def createclient(name, group):
+    patt = re.compile(r'CFS-(LH|VLH|SC|CE|PE|VE|BE)-[0-9]{5,6}') 
+    if valid_patt(patt,name):
+        name = name
     
-    patt = re.compile(r'(LH|VLH|SC|CSE|PSE|VSE)') 
-    if valid_patt(patt,role):
-        name = "CFS-%s-%s" % (role,incrementasset(role))
+    patt = re.compile(r'(LH|VLH|SC|CE|PE|VE|BE)') 
+    if valid_patt(patt,name):
+        name = "CFS-%s-%s" % (name,incrementasset(name))
 
     grouplist = listgroup('verbose')
     if not searchlist(group, grouplist):
@@ -488,10 +527,6 @@ def creategroup(network,subnet):
     p = subprocess.Popen(cmd, shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
     output, err = p.communicate()
     
-    
-    
-    
-    
 
 def deleteclient(name):
     cmd = '/usr/local/openvpn_as/scripts/sacli --user ' + name + ' UserPropDelAll'
@@ -521,45 +556,47 @@ def usage():
     progname =  os.path.basename(sys.argv[0])
     print ""
     print "%s arguments:" % progname
-    print "-h, --help                               Show this help message and exit"
-    print "-l, --list clients                       List clients"
-    print "-l, --list clients -r <role>             List clients in <role>"
-    print "-l, --list groups                        List groups"
-    print "-l, --list all                           List all client data in CSV format"
-    print "-l, --list ips                           List client IP addresses"
-    print "-l, --list ips -r <role>                 List client IP addresses in <role>"
-    print "-l, --list networks                      List network addresses"
-    print "-o, --output <client> -a <attribute>     Output client attribute - config, ip, group"
-    print "-m, --migrate <client> -g <group>        Migrate client to OpenVPN AS"
-    print "-c  --create client -n <name> -g <group> Create new client"
-    print "-c  --create client -r <role> -g <group> Create new client with auto created name"
-    print "-c  --create group -n <name> -s <subnet> Create new group"
-    print "-d, --delete <client|group> -n <name>    Delete client or group (--name required)"
+    print "-h, --help                                   Show this help message and exit"
+    print "-l, --list clients                           List clients"
+    print "-l, --list clients -p <platform>             List clients for <platform>"
+    print "-l, --list groups                            List groups"
+    print "-l, --list all                               List all client data in CSV format"
+    print "-l, --list all -p <platform>                 List all client data in CSV format for <platform>"
+    print "-l, --list ips                               List client IP addresses"
+    print "-l, --list ips -p <platform>                 List client IP addresses for <platform>"
+    print "-l, --list networks                          List network addresses"
+    print "-l, --list networks -p <platform>            List network addresses for <platform>"
+    print "-o, --output <client> -a <attribute>         Output client attribute - config, ip, group"
+    print "-m, --migrate <client> -g <group>            Migreate client to OpenVPN AS"
+    print "-c  --create client -n <name> -g <group>     Create new client"
+    print "-c  --create client -p <platform> -g <group> Create new client with auto created name"
+    print "-c  --create group -n <name> -s <subnet>     Create new group"
+    print "-d, --delete <client|group> -n <name>        Delete client or group (--name required)"
     print ""
     print "Filters:"
-    print "-s  --subnet <network/bits>      Network address for client (eg. 24)"
-    print "-n, --name <client|group>        Name of client or group"
-    print "-g, --group <group name>         Name of group"
-    print "-r, --role <role name>           Name of the client role (eg. CSE, PSE, SC)"
+    print "-s  --subnet <network/bits>                  Network address for client (eg. 24)"
+    print "-n, --name <client|group>                    Name of client or group"
+    print "-g, --group <group name>                     Name of group"
+    print "-p, --platform <platform name>               Name of the client platform (eg. CE, PE, SC)"
     print ""
     print "Examples:"
     print "Create a new client:"
-    print "     %s --create=client --role=CSE --group=10.0.50.0" % progname
+    print "     %s --create=client --platform=CE --group=10.0.50.0" % progname
     print "Create a new client (short format):"
-    print "     %s -c client -r CSE -g 10.0.50.0" % progname
+    print "     %s -c client -p CE -g 10.0.50.0" % progname
     print "Create a new group:"
     print "     %s --create=group --name=10.0.50.0 --subnet=24" % progname
     print "Delete a client:"
-    print "     %s --delete=CFS-CSE-123456" % progname
+    print "     %s --delete=CFS-CE-123456" % progname
     print "Delete a group:"
     print "     %s --delete=10.0.50.0" % progname
     print "Move a client:"
-    print "     %s --move=CFS-CSE-123456 --group=10.0.50.0" % progname
+    print "     %s --move=CFS-CE-123456 --group=10.0.50.0" % progname
     print ""
 
 def main():
     network = None
-    role = None
+    platform = None
     name = None
     attribute = None
     verbose = False
@@ -570,7 +607,7 @@ def main():
     serverips = [3,20,25,26]
     
     try:
-        opts, args = getopt.gnu_getopt(sys.argv[1:], "hl:c:s:n:g:d:r:o:m:a:", ["help","list=","create=","subnet=","name=","group=","delete=","role=","output=","migrate=","output=","attribute="])
+        opts, args = getopt.gnu_getopt(sys.argv[1:], "hl:c:s:n:g:d:p:o:m:a:", ["help","list=","create=","subnet=","name=","group=","delete=","platform=","output=","migrate=","attribute="])
         if not opts:
             usage()
             sys.exit(2)
@@ -590,14 +627,14 @@ def main():
             option = arg
             operation = 'list'
         elif opt in ("-c","--create"):
-            option = arg
+            client = arg
             operation = 'create'
         elif opt in ("-s","--subnet"):
             subnet = arg
         elif opt in ("-n","--name"):
             name = arg
-        elif opt in ("-r","--role"):
-            role = arg
+        elif opt in ("-p","--platform"):
+            platform = arg
         elif opt in ("-g","--group"):
             group = arg
         elif opt in ("-a","--attribute"):
@@ -615,8 +652,8 @@ def main():
     
     if operation in 'list':
         if option in 'ips':
-            if role:
-                itemlist = listclient(role, None)
+            if platform:
+                itemlist = listclient('ips', platform)
             else:
                 itemlist = listclient('ips', None)
             for item in itemlist:
@@ -630,71 +667,32 @@ def main():
              for item in itemlist:
                 print item
         elif option in 'clients':
-            if role:
-                itemlist = listasset(role)
+            if platform:
+                itemlist = listclient('name', platform)
             else:
                 itemlist = listclient('name', None)
             for item in itemlist:
                     print item
         elif option in 'all':
-            itemlist = listclient('all', None)
+            if platform:
+                itemlist = listclient('all', platform)
+            else:
+                itemlist = listclient('all', None)
             for item in itemlist:
                 print item
         else:
             print "Unknown Option - %s" % option
             sys.exit(2)
     elif operation in 'create':
-        if option in 'client':
-            if name and role:
-                print "Please provide valid asset role (eg. LH, CSE, VSE)"
-                sys.exit()
-            elif name:
-                patt = re.compile(r'CFS-(LH|VLH|SC|CSE|PSE|VSE)-[0-9]{6}') 
-                if valid_patt(patt,name):
-                    if group:
-                        if not valid_ipv4_address(group):
-                            print "Please provide valid network address eg. 10.0.0.0"
-                            sys.exit()
-                    else:
-                        print "Please provide valid network address eg. 10.0.0.0"
-                        sys.exit()
-                else:
-                    print "Please provide valid asset role (eg. LH, CSE, VSE)"
-                    sys.exit()
-                createclient(name,group) 
-            elif role:
-                patt = re.compile(r'(LH|VLH|SC|CSE|PSE|VSE)') 
-                if not valid_patt(patt,role):
-                    #if group:
-                    # changed from groups formatted as valid IPs to LH-ClientsJ
-                    # 
-                    #    if not valid_ipv4_address(group):
-                    #        print "Please provide valid network address eg. 10.0.0.0"
-                    #        sys.exit()
-                    #else:
-                    #    print "Please provide valid network address eg. 10.0.0.0"
-                    print "Please provide valid asset role (eg. LH, CSE, VSE)"
-                    sys.exit()
-                client = createclient(role,group) 
-                print client
-                sys.exit(0)
-        elif option in 'group':
-            if name:
-                network = name 
-            else:
-                print "Please enter a valid network"
-                sys.exit(2)
-            if subnet >= '1' and subnet <= '32':
-                creategroup(network,subnet)
-            else:
-                print "Please enter valid subnet bits"
-                sys.exit(2)
-            
+        if group:
+            createclient(client, group)
+        else:
+            print "Please provide group"
+            sys.exit(2)
     elif operation in 'delete':
         deleteclient(option)
     elif operation in 'migrate':
         if group:
-            group = 'LH-ClientsJ'
             migrateclient(client, group)
         else:
             print "Please provide group"
@@ -715,5 +713,4 @@ def main():
         
 if __name__ == "__main__":
     main()
-    
-    
+
