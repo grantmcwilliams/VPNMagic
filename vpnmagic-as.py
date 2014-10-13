@@ -534,7 +534,7 @@ def creategroup(name,network):
     
 
 def deleteclient(name):
-    cmd = '/usr/local/openvpn_as/scripts/sacli --user ' + name + ' UserPropDelAll'
+    cmd = '/usr/local/openvpn_as/scripts/sacli --user %s UserPropDelAll' % name
     p = subprocess.Popen(cmd, shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
     output, err = p.communicate()
 
@@ -645,7 +645,7 @@ def main():
         elif opt in ("-a","--attribute"):
             attribute = arg
         elif opt in ("-d","--delete"):
-            option = arg
+            itemtype = arg
             operation = 'delete'
         elif opt in ("-o","--output"):
             option = arg
@@ -713,7 +713,14 @@ def main():
             print "Please provide item to create (client,group)"
             sys.exit(2)    
     elif operation in 'delete':
-        deleteclient(option)
+	if itemtype in 'client':
+	    if not name:
+	        print "Please provide name"
+	        sys.exit(2)
+	    else:
+                deleteclient(name)
+	elif itemtype in 'group':
+		print "Group deletion not functional"
     elif operation in 'migrate':
         if group:
             migrateclient(client, group)

@@ -1,8 +1,7 @@
 #!/usr/bin/env python
 
 #Bugs
-#Filtering by ROLE no longer works
-
+# Filter by role no longer works
 
 import struct, socket
 import getopt, sys, os
